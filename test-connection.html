@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend-Backend Connection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Frontend-Backend Connection Test</h1>
+    
+    <div class="test-section info">
+        <h3>1. Environment Variables</h3>
+        <p>Supabase URL: <span id="supabase-url">Loading...</span></p>
+        <p>Anon Key: <span id="anon-key">Loading...</span></p>
+    </div>
+
+    <div class="test-section">
+        <h3>2. Supabase Client Connection</h3>
+        <button onclick="testSupabaseConnection()">Test Connection</button>
+        <div id="connection-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>3. Authentication Test</h3>
+        <button onclick="testAuth()">Test Auth</button>
+        <div id="auth-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>4. Edge Function Test</h3>
+        <button onclick="testEdgeFunction()">Test List Documents</button>
+        <div id="edge-function-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>5. Database Query Test</h3>
+        <button onclick="testDatabaseQuery()">Query Documents Table</button>
+        <div id="database-result"></div>
+    </div>
+
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+        const supabaseUrl = 'https://bshslnprabasygcvoden.supabase.co';
+        const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzaHNsbnByYWJhc3lnY3ZvZGVuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQzNDc5OTMsImV4cCI6MjA3OTkyMzk5M30.UPdq_i2ILcnDnDdqRluOboLKyh2bu3ty_c3nbc4J-do';
+
+        window.supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+        // Display environment variables
+        document.getElementById('supabase-url').textContent = supabaseUrl;
+        document.getElementById('anon-key').textContent = supabaseAnonKey.substring(0, 20) + '...';
+
+        window.testSupabaseConnection = async () => {
+            const resultDiv = document.getElementById('connection-result');
+            resultDiv.innerHTML = '<p>Testing...</p>';
+            
+            try {
+                const { data, error } = await window.supabase.from('documents').select('count').limit(1);
+                if (error) throw error;
+                resultDiv.className = 'test-section success';
+                resultDiv.innerHTML = '<p>✅ Supabase client connected successfully!</p>';
+            } catch (error) {
+                resultDiv.className = 'test-section error';
+                resultDiv.innerHTML = `<p>❌ Connection failed: ${error.message}</p>`;
+            }
+        };
+
+        window.testAuth = async () => {
+            const resultDiv = document.getElementById('auth-result');
+            resultDiv.innerHTML = '<p>Testing...</p>';
+            
+            try {
+                const { data: { session }, error } = await window.supabase.auth.getSession();
+                if (error) throw error;
+                
+                if (session) {
+                    resultDiv.className = 'test-section success';
+                    resultDiv.innerHTML = `
+                        <p>✅ Authenticated!</p>
+                        <p>User ID: ${session.user.id}</p>
+                        <p>Email: ${session.user.email}</p>
+                    `;
+                } else {
+                    resultDiv.className = 'test-section info';
+                    resultDiv.innerHTML = '<p>ℹ️ Not authenticated. Please sign in on the main app.</p>';
+                }
+            } catch (error) {
+                resultDiv.className = 'test-section error';
+                resultDiv.innerHTML = `<p>❌ Auth test failed: ${error.message}</p>`;
+            }
+        };
+
+        window.testEdgeFunction = async () => {
+            const resultDiv = document.getElementById('edge-function-result');
+            resultDiv.innerHTML = '<p>Testing...</p>';
+            
+            try {
+                const { data: { session } } = await window.supabase.auth.getSession();
+                if (!session) {
+                    resultDiv.className = 'test-section error';
+                    resultDiv.innerHTML = '<p>❌ Please sign in first</p>';
+                    return;
+                }
+
+                const response = await fetch(`${supabaseUrl}/functions/v1/list-documents?limit=10&offset=0`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${session.access_token}`,
+                        'apikey': supabaseAnonKey,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({ error: response.statusText }));
+                    throw new Error(error.error || 'Edge function failed');
+                }
+
+                const data = await response.json();
+                resultDiv.className = 'test-section success';
+                resultDiv.innerHTML = `
+                    <p>✅ Edge Function working!</p>
+                    <p>Documents found: ${data.documents?.length || 0}</p>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                resultDiv.className = 'test-section error';
+                resultDiv.innerHTML = `<p>❌ Edge Function test failed: ${error.message}</p>`;
+            }
+        };
+
+        window.testDatabaseQuery = async () => {
+            const resultDiv = document.getElementById('database-result');
+            resultDiv.innerHTML = '<p>Testing...</p>';
+            
+            try {
+                const { data: { session } } = await window.supabase.auth.getSession();
+                if (!session) {
+                    resultDiv.className = 'test-section error';
+                    resultDiv.innerHTML = '<p>❌ Please sign in first</p>';
+                    return;
+                }
+
+                const { data, error } = await window.supabase
+                    .from('documents')
+                    .select('*')
+                    .order('uploaded_at', { ascending: false })
+                    .limit(10);
+
+                if (error) throw error;
+
+                resultDiv.className = 'test-section success';
+                resultDiv.innerHTML = `
+                    <p>✅ Database query successful!</p>
+                    <p>Documents found: ${data.length}</p>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                resultDiv.className = 'test-section error';
+                resultDiv.innerHTML = `<p>❌ Database query failed: ${error.message}</p>`;
+            }
+        };
+    </script>
+</body>
+</html>
+
