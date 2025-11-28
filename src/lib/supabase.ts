@@ -106,3 +106,34 @@ export const uploadFile = async (file: File) => {
   return response.json();
 };
 
+// Helper function to delete a document
+export const deleteDocument = async (documentId: string) => {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) {
+    throw new Error("No active session");
+  }
+
+  const response = await fetch(
+    `${supabaseUrl}/functions/v1/delete-document`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: supabaseAnonKey,
+      },
+      body: JSON.stringify({ documentId }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: response.statusText }));
+    throw new Error(error.error || "Failed to delete document");
+  }
+
+  return response.json();
+};
+
