@@ -1,11 +1,21 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Upload, File, Link as LinkIcon, X, Loader2 } from "lucide-react";
+import { Upload, File, Link as LinkIcon, X, Loader2, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { uploadFile, callEdgeFunction } from "@/lib/supabase";
+import { uploadFile, callEdgeFunction, deleteDocument } from "@/lib/supabase";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface UploadedFile {
   id: string;
@@ -19,6 +29,9 @@ export const UploadPanel = () => {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [linkInput, setLinkInput] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState<{ id: string; name: string } | null>(null);
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
@@ -117,6 +130,32 @@ export const UploadPanel = () => {
 
   const handleRemoveFile = (id: string) => {
     setFiles(files.filter((f) => f.id !== id));
+  };
+
+  const handleDeleteClick = (doc: any) => {
+    setDocumentToDelete({ id: doc.id, name: doc.file_name });
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!documentToDelete || !user) return;
+
+    setDeleting(documentToDelete.id);
+    setDeleteDialogOpen(false);
+
+    try {
+      await deleteDocument(documentToDelete.id);
+      toast.success(`${documentToDelete.name} deleted successfully`);
+      
+      // Refresh documents list
+      queryClient.invalidateQueries({ queryKey: ["documents", user.id] });
+    } catch (error: any) {
+      console.error("Delete error:", error);
+      toast.error(`Failed to delete: ${error.message || "Unknown error"}`);
+    } finally {
+      setDeleting(null);
+      setDocumentToDelete(null);
+    }
   };
 
   return (
@@ -232,7 +271,7 @@ export const UploadPanel = () => {
               {documents.map((doc: any) => (
                 <div
                   key={doc.id}
-                  className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:bg-panel-hover transition-colors"
+                  className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:bg-panel-hover transition-colors group"
                 >
                   <File className="h-4 w-4 text-primary flex-shrink-0" />
                   <div className="min-w-0 flex-1">
@@ -243,12 +282,46 @@ export const UploadPanel = () => {
                       {doc.file_type.toUpperCase()} • {new Date(doc.uploaded_at).toLocaleDateString()}
                     </p>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDeleteClick(doc)}
+                    disabled={deleting === doc.id}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
+                  >
+                    {deleting === doc.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </Button>
                 </div>
               ))}
             </div>
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Document</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{documentToDelete?.name}"? This action cannot be undone and will also delete all associated data (chunks, financial data, etc.).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
